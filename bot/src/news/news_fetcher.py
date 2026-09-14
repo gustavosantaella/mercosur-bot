@@ -1,86 +1,76 @@
 import socket
-import requests
-import feedparser
-from bs4 import BeautifulSoup
+import urllib.request
+import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
-from src.config import NEWS_FEEDS
 
-# Connectivity check target — lightweight, no payload
 _CONNECTIVITY_HOST = "8.8.8.8"
 _CONNECTIVITY_PORT = 53
 _CONNECTIVITY_TIMEOUT = 3
 
-
 def _has_internet() -> bool:
-    """Quick TCP probe to confirm internet connectivity before attempting RSS feeds."""
+    """Verifica si hay conexión a Internet resolviendo contra Google DNS."""
     try:
         socket.setdefaulttimeout(_CONNECTIVITY_TIMEOUT)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(
-            (_CONNECTIVITY_HOST, _CONNECTIVITY_PORT))
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((_CONNECTIVITY_HOST, _CONNECTIVITY_PORT))
         return True
-    except (socket.timeout, OSError):
+    except Exception:
         return False
 
-
 class NewsFetcher:
-    """
-    Extractor de noticias financieras y económicas nacionales de Venezuela.
-    Utiliza headers de navegador real para evitar bloqueos anti-bot en medios locales.
-    """
+    def __init__(self):
+        self.feeds = [
+            {
+                "name": "Bolsa de Valores de Caracas",
+                "url": "https://www.bolsadecaracas.com/feed/"
+            },
+            {
+                "name": "Mercosur Casa de Bolsa",
+                "url": "https://mercosurcb.com/feed/"
+            }
+        ]
 
-    def __init__(self, feeds: List[Dict[str, str]] = NEWS_FEEDS):
-        self.feeds = feeds
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7"
-        })
-
-    def fetch_latest_news(self, max_per_feed: int = 5) -> List[Dict[str, Any]]:
-        """
-        Obtiene noticias recientes desde los RSS configurados.
-        Retorna lista vacía silenciosamente si no hay conectividad a internet.
-        """
-        # ── Connectivity pre-check ────────────────────────────────
+    def fetch_latest_news(self) -> List[Dict[str, Any]]:
         if not _has_internet():
-            print("[Info] Sin acceso a internet — se omite la obtención de noticias.")
             return []
 
         all_news = []
-
         for feed_info in self.feeds:
-            feed_name = feed_info["name"]
-            url = feed_info["url"]
+            if isinstance(feed_info, dict):
+                feed_name = feed_info.get("name", "Fuente Desconocida")
+                feed_url = feed_info.get("url", "")
+            elif isinstance(feed_info, (list, tuple)) and len(feed_info) >= 2:
+                feed_name = str(feed_info[0])
+                feed_url = str(feed_info[1])
+            elif isinstance(feed_info, str):
+                feed_name = feed_info
+                feed_url = feed_info
+            else:
+                continue
+
+            if not feed_url or not feed_url.startswith("http"):
+                continue
 
             try:
-                response = self.session.get(url, timeout=10)
-                parsed = feedparser.parse(
-                    response.content if response.status_code == 200 else url
+                req = urllib.request.Request(
+                    feed_url, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
                 )
-
-                for entry in parsed.entries[:max_per_feed]:
-                    summary_raw = entry.get("summary", "") or entry.get("description", "")
-                    clean_summary = (
-                        BeautifulSoup(summary_raw, "html.parser").get_text(strip=True)
-                        if summary_raw else ""
-                    )
-                    all_news.append({
-                        "fuente": feed_name,
-                        "titulo": entry.get("title", ""),
-                        "link": entry.get("link", ""),
-                        "resumen": clean_summary[:300] + ("..." if len(clean_summary) > 300 else ""),
-                        "fecha": entry.get("published", entry.get("updated", "Reciente"))
-                    })
-
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.Timeout,
-                    requests.exceptions.SSLError) as e:
-                # Network-level failure — short, clean message; no traceback
-                reason = type(e).__name__
-                print(f"[Warning] {feed_name}: no disponible ({reason}).")
-            except Exception as e:
-                # Unexpected error — keep full message for debugging
-                print(f"[Warning] Error inesperado al obtener noticias de {feed_name}: {e}")
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    xml_data = response.read()
+                    root = ET.fromstring(xml_data)
+                    
+                    for item in root.findall('.//item'):
+                        title = item.findtext('title', default='Sin título')
+                        link = item.findtext('link', default='')
+                        pub_date = item.findtext('pubDate', default='')
+                        
+                        all_news.append({
+                            "source": feed_name,
+                            "title": title.strip(),
+                            "link": link.strip(),
+                            "pub_date": pub_date.strip()
+                        })
+            except Exception:
+                pass
 
         return all_news
