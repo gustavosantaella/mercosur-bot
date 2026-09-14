@@ -55,21 +55,20 @@ class MercosurClient:
             "Content-Type": "application/json"
         }
 
-    def login(self):
+    def login(self, force=False):
+        if self.token and self.token != "GUEST_TOKEN" and not force:
+            return True
+
         load_dotenv()
         self.email = os.getenv("MERCOSUR_EMAIL") or os.getenv("MERCOSUR_USER", self.email)
         self.password = os.getenv("MERCOSUR_PASSWORD", self.password)
 
-        print(f"🔍 [Debug] Intentando login con usuario: '{self.email}'")
-
         if not self.email or not self.password:
-            print("⚠️ [Mercosur] Sin credenciales configuradas en .env. Modo lectura/público activado.")
             self.token = "GUEST_TOKEN"
             self.user_data = {"username": "Guest", "role": "public"}
             return True
 
         try:
-            # Enviamos tanto email como username para cubrir ambas variantes del backend
             payload = {
                 "email": self.email,
                 "username": self.email,
@@ -83,37 +82,38 @@ class MercosurClient:
                     self.token = data.get("token")
                     self.user_data = data.get("cliente", {})
                     self.headers["Authorization"] = f"Bearer {self.token}"
-                    
-                    token_preview = f"{self.token[:12]}...{self.token[-10:]}" if len(self.token) > 22 else self.token
-                    nombre_cliente = self.user_data.get("nombre", "").strip()
-                    
-                    print(f"🔑 [Debug] Token recibido: {token_preview}")
-                    print(f"🔑 [Mercosur] Autenticación exitosa. Bienvenido {nombre_cliente}.")
                     return True
             
-            print(f"⚠️ [Mercosur] Fallo al autenticar (Status {res.status_code}). Respuesta backend: {res.text}")
             self.token = "GUEST_TOKEN"
             return False
 
-        except Exception as e:
-            print(f"⚠️ [Mercosur] Error de conexión en login: {e}")
+        except Exception:
             self.token = "GUEST_TOKEN"
             return False
 
     def authenticate(self):
         return self.login()
 
-    def get_balances(self):
-        if self.token == "GUEST_TOKEN" or not self.token:
-            print("⚠️ [Mercosur] Sin sesión activa. Configura MERCOSUR_EMAIL y MERCOSUR_PASSWORD en .env.")
-            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0, "ves_available": 0.0}
+    def _request_with_auth_retry(self, method, url, **kwargs):
+        if not self.token or self.token == "GUEST_TOKEN":
+            self.login()
 
+        kwargs["headers"] = self.headers
+        res = requests.request(method, url, **kwargs)
+
+        if res.status_code in (401, 403):
+            if self.login(force=True):
+                kwargs["headers"] = self.headers
+                res = requests.request(method, url, **kwargs)
+
+        return res
+
+    def get_balances(self):
         try:
-            res = requests.get(self.url_balances, headers=self.headers, timeout=12)
+            res = self._request_with_auth_retry("GET", self.url_balances, timeout=12)
+            
             if res.status_code in (200, 304):
                 response_json = res.json()
-                
-                # Manejar respuesta si devuelve array directo, diccionario o subclave "data"
                 accounts = response_json.get("data", response_json) if isinstance(response_json, dict) else response_json
                 if isinstance(accounts, dict):
                     accounts = [accounts]
@@ -124,33 +124,28 @@ class MercosurClient:
 
                 for acc in accounts:
                     if isinstance(acc, dict):
-                        disponible += float(acc.get("saldo_disponible") or acc.get("disponible") or 0.0)
-                        actual += float(acc.get("saldo_actual") or acc.get("total") or acc.get("saldo") or 0.0)
-                        bloqueado += float(acc.get("bloqueos") or acc.get("bloqueado") or 0.0)
+                        disponible += float(acc.get("disponible") or acc.get("saldo_disponible") or 0.0)
+                        actual += float(acc.get("total") or acc.get("saldo_actual") or acc.get("saldo") or 0.0)
+                        bloqueado += float(acc.get("bloqueado") or acc.get("bloqueos") or 0.0)
 
                 return {
                     "disponible": disponible,
                     "saldo_disponible": disponible,
                     "ves_available": disponible,
                     "actual": actual,
-                    "saldo_actual": actual,
-                    "ves_actual": actual,
                     "total": actual,
                     "bloqueado": bloqueado,
-                    "bloqueos": bloqueado,
                     "raw_data": accounts
                 }
 
-            print(f"⚠️ [Mercosur] Status {res.status_code} al consultar saldos.")
-            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0}
-        except Exception as e:
-            print(f"⚠️ [Mercosur] Error al consultar saldos: {e}")
-            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0}
+            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0, "ves_available": 0.0}
+        except Exception:
+            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0, "ves_available": 0.0}
 
     def fetch_quotes(self):
         try:
             response = requests.get(self.url_quotes, headers=self.headers, timeout=12)
-            if response.status_code != 200:
+            if response.status_code not in (200, 304):
                 return []
 
             data = response.json()
@@ -158,11 +153,12 @@ class MercosurClient:
             items = data.get("data", data) if isinstance(data, dict) else data
 
             for item in items:
-                symbol = item.get("simbolo") or item.get("ticker") or item.get("symbol") or "N/A"
-                name = item.get("descripcion") or item.get("nombre") or item.get("empresa") or "Sin Nombre"
-                price = float(item.get("precio_ultimo") or item.get("ultimo") or item.get("precio") or 0.0)
-                var_pct = float(item.get("variacion") or item.get("variacion_pct") or 0.0)
-                cash_div = float(item.get("monto_efectivo") or 0.0)
+                # Mapeo ajustado a los campos exactos entregados por la API
+                symbol = item.get("cod_simb") or item.get("simbolo") or item.get("symbol") or "N/A"
+                name = item.get("descripcion") or item.get("desc_simb") or "Sin Nombre"
+                price = float(item.get("precio_ultimo") or 0.0)
+                var_pct = float(item.get("variacion_rel") or item.get("variacion") or 0.0)
+                cash_div = float(item.get("monto_efectivo_acumulado") or item.get("monto_efectivo") or 0.0)
                 dividend_type = item.get("tipo_dividendo") or "N/A"
 
                 quotes.append({
