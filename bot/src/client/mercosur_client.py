@@ -186,3 +186,37 @@ class MercosurClient:
 
     def get_companies_summary(self):
         return self.fetch_quotes()
+
+    def fetch_orders(self, pagina=1, limite=20):
+        try:
+            url_orders = f"{self.base_url}/portal/ordenes?pagina={pagina}&limite={limite}"
+            response = self._request_with_auth_retry("GET", url_orders, timeout=8)
+            
+            if response.status_code not in (200, 304):
+                return []
+
+            data = response.json()
+            items = data.get("data", data) if isinstance(data, dict) else data
+            if not isinstance(items, list):
+                items = [items]
+
+            orders = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                orders.append({
+                    "id": item.get("id"),
+                    "tipo": item.get("tipo"),
+                    "symbol": item.get("cod_simb"),
+                    "status": item.get("estado"),
+                    "date": item.get("fecha_orden"),
+                    "requested_qty": float(item.get("cantidad_solicitada") or 0.0),
+                    "requested_price": float(item.get("precio_solicitado") or 0.0),
+                    "executed_qty": float(item.get("cantidad_ejecutada") or 0.0),
+                    "blocked_amount": float(item.get("monto_bloqueo_solicitud") or 0.0),
+                    "title_desc": item.get("desc_titulo")
+                })
+
+            return orders
+        except Exception:
+            return []

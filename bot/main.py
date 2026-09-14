@@ -1,4 +1,4 @@
-from src.ui import show_main_menu, display_instruments, print_mercosur_balances
+from src.ui import show_main_menu, display_instruments, display_orders, print_mercosur_balances
 from src.client.mercosur_client import MercosurClient
 from src.ai.investment_advisor import InvestmentAdvisor
 from rich.console import Console
@@ -19,20 +19,15 @@ def main():
         
         elif option == "2":
             console.print("\n[bold yellow]🚀 Analizando mercado, saldos y generando consejos de IA...[/bold yellow]")
-            
-            # Obtener datos reales concurrentes
             balances = client.get_balances()
             mercosur_bal = balances.get("disponible", balances.get("ves_available", 0.0))
-            
             quotes = client.fetch_quotes()
             
-            # Generar informe de inversión y consejos
             analysis_report = advisor.analyze_investments(
                 companies=quotes, 
                 news=[], 
                 mercosur_balance=mercosur_bal
             )
-            
             console.print(f"\n{analysis_report}")
             input("\nPresiona ENTER para volver al menú...")
         
@@ -40,6 +35,12 @@ def main():
             console.print("\n[bold yellow]📈 Obteniendo instrumentos en tiempo real...[/bold yellow]")
             quotes = client.fetch_quotes()
             display_instruments(quotes)
+            input("\nPresiona ENTER para volver al menú...")
+
+        elif option == "4":
+            console.print("\n[bold yellow]📋 Obteniendo tus órdenes registradas...[/bold yellow]")
+            orders = client.fetch_orders()
+            display_orders(orders)
             input("\nPresiona ENTER para volver al menú...")
         
         elif option == "0":

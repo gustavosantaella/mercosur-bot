@@ -50,9 +50,10 @@ def show_main_menu():
     console.print("  [bold green]1.[/bold green] 💰 Ver Saldos y Estado de Cuenta")
     console.print("  [bold green]2.[/bold green] 🚀 Inversión Automática / Consejos IA")
     console.print("  [bold green]3.[/bold green] 📈 Instrumentos (Listar Empresas Cotizando)")
+    console.print("  [bold green]4.[/bold green] 📋 Órdenes (Ver mis órdenes registradas)")
     console.print("  [bold red]0.[/bold red] 🚪 Salir\n")
 
-    return Prompt.ask("👉 Seleccione una opción", choices=["1", "2", "3", "0"], default="3")
+    return Prompt.ask("👉 Seleccione una opción", choices=["1", "2", "3", "4", "0"], default="3")
 
 def display_instruments(quotes):
     if not quotes:
@@ -75,6 +76,36 @@ def display_instruments(quotes):
             f"{float(item.get('last_price', 0.0)):,.2f}",
             f"[{var_color}]{var_val:+.2f}%[/{var_color}]",
             f"{float(item.get('cash_amount', 0.0)):,.2f}"
+        )
+
+    console.print(table)
+
+def display_orders(orders):
+    if not orders:
+        console.print("[bold red]❌ No se encontraron órdenes registradas.[/bold red]")
+        return
+
+    table = Table(title="📋 Mis Órdenes (Mercosur / BVC)")
+    table.add_column("ID", style="dim", no_wrap=True)
+    table.add_column("Tipo", style="bold")
+    table.add_column("Símbolo", style="cyan")
+    table.add_column("Estado", style="magenta")
+    table.add_column("Cant. Sol.", justify="right")
+    table.add_column("Precio Sol. (VES)", justify="right", style="green")
+    table.add_column("Monto Bloq. (VES)", justify="right", style="yellow")
+
+    for order in orders:
+        tipo_color = "green" if order["tipo"] == "COMPRA" else "red"
+        status_color = "yellow" if order["status"] == "ABIERTA" else "green"
+        
+        table.add_row(
+            str(order["id"]),
+            f"[{tipo_color}]{order['tipo']}[/{tipo_color}]",
+            order["symbol"],
+            f"[{status_color}]{order['status']}[/{status_color}]",
+            f"{order['requested_qty']:,.2f}",
+            f"{order['requested_price']:,.2f}",
+            f"{order['blocked_amount']:,.2f}"
         )
 
     console.print(table)
