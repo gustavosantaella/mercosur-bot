@@ -1,6 +1,6 @@
 import json
 
-class InvestmentAdvisor:
+class InvestmentAIAdvisor:
     def __init__(self, ollama_client=None):
         self.ollama_client = ollama_client
 
@@ -45,3 +45,6 @@ class InvestmentAdvisor:
             "bnc_balance": bnc_balance,
             "recommendations": recommendations
         }
+
+# Alias para compatibilidad
+InvestmentAdvisor = InvestmentAIAdvisor
