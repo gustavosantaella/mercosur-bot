@@ -3,6 +3,7 @@ import json
 import socket
 import urllib3
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -17,8 +18,8 @@ def get_custom_dns_ip(host):
             try:
                 resolver = dns.resolver.Resolver(configure=False)
                 resolver.nameservers = [dns_ip]
-                resolver.timeout = 2
-                resolver.lifetime = 2
+                resolver.timeout = 1
+                resolver.lifetime = 1
                 answers = resolver.resolve(host, 'A')
                 for rdata in answers:
                     return str(rdata)
@@ -74,7 +75,7 @@ class MercosurClient:
                 "username": self.email,
                 "password": self.password
             }
-            res = requests.post(self.url_login, json=payload, headers=self.headers, timeout=12)
+            res = requests.post(self.url_login, json=payload, headers=self.headers, timeout=8)
             
             if res.status_code == 200:
                 data = res.json()
@@ -110,7 +111,7 @@ class MercosurClient:
 
     def get_balances(self):
         try:
-            res = self._request_with_auth_retry("GET", self.url_balances, timeout=12)
+            res = self._request_with_auth_retry("GET", self.url_balances, timeout=8)
             
             if res.status_code in (200, 304):
                 response_json = res.json()
@@ -144,16 +145,14 @@ class MercosurClient:
 
     def fetch_quotes(self):
         try:
-            response = requests.get(self.url_quotes, headers=self.headers, timeout=12)
+            response = requests.get(self.url_quotes, headers=self.headers, timeout=8)
             if response.status_code not in (200, 304):
                 return []
 
             data = response.json()
-            quotes = []
             items = data.get("data", data) if isinstance(data, dict) else data
 
-            for item in items:
-                # Mapeo ajustado a los campos exactos entregados por la API
+            def parse_item(item):
                 symbol = item.get("cod_simb") or item.get("simbolo") or item.get("symbol") or "N/A"
                 name = item.get("descripcion") or item.get("desc_simb") or "Sin Nombre"
                 price = float(item.get("precio_ultimo") or 0.0)
@@ -161,17 +160,24 @@ class MercosurClient:
                 cash_div = float(item.get("monto_efectivo_acumulado") or item.get("monto_efectivo") or 0.0)
                 dividend_type = item.get("tipo_dividendo") or "N/A"
 
-                quotes.append({
+                return {
                     "symbol": symbol,
                     "description": name,
                     "last_price": price,
                     "var_pct": var_pct,
                     "cash_amount": cash_div,
                     "dividends": dividend_type
-                })
+                }
 
-            with open("quotes_latest.json", "w", encoding="utf-8") as f:
-                json.dump(quotes, f, ensure_ascii=False, indent=2)
+            # Procesamiento concurrente de los 41+ instrumentos para máxima velocidad
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                quotes = list(executor.map(parse_item, items))
+
+            try:
+                with open("quotes_latest.json", "w", encoding="utf-8") as f:
+                    json.dump(quotes, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
             return quotes
 
