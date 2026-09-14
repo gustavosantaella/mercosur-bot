@@ -1,1 +1,330 @@
-[]
+[
+    {
+        "symbol": "N/A",
+        "description": "BANCO DEL CARIBE,C.A.BCO.UNIV.CLASE (A)",
+        "last_price": 2165.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "ALALZA INVERSIONES, C.A. CLASE \"B\"",
+        "last_price": 37.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "ARCA INM. Y VALORES, C.A. CLASE \"A\"",
+        "last_price": 2000.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "ARCA INM. Y VALORES, C.A. CLASE \"B\"",
+        "last_price": 1284.45,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "BANCO NACIONAL DE CREDITO,C.A.BCO.UNIV.",
+        "last_price": 235.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "BANCO PROVINCIAL, S.A. BCO. UNIVERSAL",
+        "last_price": 72.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "BOLSA DE VALORES DE CARACAS, C.A.",
+        "last_price": 785.02,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "BANCO DE VENEZUELA, S.A. BCO.UNIVERSAL",
+        "last_price": 1745.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "CLABE CAPITAL, C.A. CLASE (B)",
+        "last_price": 370.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "CERAMICA CARABOBO, SACA",
+        "last_price": 7199.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "CORP.GRUPO QUIMICO, C.A.",
+        "last_price": 2190.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "CORIMON, C.A.",
+        "last_price": 664.52,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "DOMINGUEZ & CIA., S.A.",
+        "last_price": 779.2,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "PRODUCTOS EFE S.A.",
+        "last_price": 85.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "ENVASES VENEZOLANOS S.A.",
+        "last_price": 774.99,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "FIVENCA FONDO CAPITAL PRIVADO. CLASE \"A\"",
+        "last_price": 80.79,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "FIVENCA FONDO CAPITAL PRIVADO. CLASE \"B\"",
+        "last_price": 217.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "FABRICA NACIONAL DE CEMENTOS, C.A.",
+        "last_price": 2150.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "C.A. FAB. NACIONAL DE VIDRIO",
+        "last_price": 59.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "GRUPO MANTRA CORP. C.A. CLASE B",
+        "last_price": 5200.03,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "GRUPO ZULIANO, C.A.",
+        "last_price": 750.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "INVERSIONES CRECEPYMES, C.A. CLASE \"B\"",
+        "last_price": 115.3,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "IMPULSA VENTURE CAPITAL, C.A. CLASE \"B\"",
+        "last_price": 2520.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "INVACA, INVESTMENT COMPANY,  SACA.  \"A\"",
+        "last_price": 875.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "INVACA, INVESTMENT COMPANY, SACA.  \"B\"",
+        "last_price": 580.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "MANUFACTURAS DE PAPEL,C.A.(MANPA) SACA.",
+        "last_price": 102.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "MONTESCO CAPITAL GLOBAL, C.A.  CLASE \"B\"",
+        "last_price": 257.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "MERCANTIL SERV. FINANCIEROS C.A. CLS.(A)",
+        "last_price": 7900.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "MERCANTIL SERV. FINANCIEROS C.A. CLS.(B)",
+        "last_price": 7200.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "FONDO PETROLIA, C.A. CLASE (B)",
+        "last_price": 215.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "PC-IBC FONDO MUTUAL DE INV. CAP. CERRADO",
+        "last_price": 13.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "PROAGRO C.A.",
+        "last_price": 107.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "PIVCA PROMOTRA  INV. Y VALORES CLASE \"B\"",
+        "last_price": 50000.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "PROTINAL C.A.",
+        "last_price": 590.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "RENDIVALORES  FON.MUT. INV. CAP. CERRADO",
+        "last_price": 14.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "C.A. RON SANTA TERESA",
+        "last_price": 580.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "C.A. RON SANTA TERESA (CLASE B)",
+        "last_price": 377.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "SIVENSA, S.A",
+        "last_price": 896.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "C.A.NAC.TELF.VZLA. (CANTV) CLASE (D)",
+        "last_price": 865.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "C.A. TELARES DE PALO GRANDE",
+        "last_price": 10.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    },
+    {
+        "symbol": "N/A",
+        "description": "VENEALTERNATIVE, S.A.  CLASE \"B\"",
+        "last_price": 39.0,
+        "var_pct": 0.0,
+        "cash_amount": 0.0,
+        "dividends": "N/A"
+    }
+]
