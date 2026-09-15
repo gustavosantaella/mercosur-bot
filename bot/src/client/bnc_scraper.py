@@ -1,6 +1,13 @@
-import os
 import time
 from src.config import FETCH_BNC_BALANCE, BNC_URL, BNC_TARJETA, BNC_CEDULA, BNC_PASSWORD, BNC_HEADLESS
+
+
+def _is_enabled(value):
+    """True solo si el flag está activo (tolerante a bool, '1', 'true', 'si', 'on')."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "y", "si", "sí", "on")
+
 
 class BNCScraper:
     def __init__(self):
@@ -8,12 +15,11 @@ class BNCScraper:
         self.tarjeta = BNC_TARJETA
         self.cedula = BNC_CEDULA
         self.password = BNC_PASSWORD
-        self.headless = BNC_HEADLESS
+        self.headless = _is_enabled(BNC_HEADLESS)
 
     def fetch_balance(self):
         # 1. Comprobacion estricta del flag en .env
-        flag = str(FETCH_BNC_BALANCE).strip().lower()
-        if flag in ("0", "false", "no", "none", "off"):
+        if not _is_enabled(FETCH_BNC_BALANCE):
             print("ℹ️ [BNC Scraper] Scraping deshabilitado (FETCH_BNC_BALANCE=0). Saltando Selenium...")
             return None
 
@@ -32,7 +38,7 @@ class BNCScraper:
             from selenium.webdriver.support import expected_conditions as EC
 
             options = Options()
-            if str(self.headless) == "1":
+            if self.headless:
                 options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
             options.add_argument("--no-sandbox")
@@ -69,7 +75,9 @@ class BNCScraper:
                 # Esperar saldo
                 time.sleep(5)
                 print("[BNC Scraper] Esperando carga del resumen de cuenta...")
-                return 0.0
+                print("[BNC Scraper] ⚠️ No se pudo interpretar el saldo en el DOM; "
+                      "se continúa sin saldo bancario.")
+                return None
 
             finally:
                 print("[BNC Scraper] Cerrando navegador...")

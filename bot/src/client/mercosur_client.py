@@ -1,10 +1,25 @@
-import os
 import json
+import os
 import socket
-import urllib3
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import urllib3
 from dotenv import load_dotenv
+
+try:
+    from src.config import (
+        EXCLUDE_SYMBOLS,
+        HTTP_TIMEOUT,
+        MERCOSUR_BASE_URL,
+        QUOTES_FILE,
+        QUOTES_LATEST_FILE,
+    )
+except Exception:  # pragma: no cover - permite importar el módulo de forma aislada
+    EXCLUDE_SYMBOLS = []
+    HTTP_TIMEOUT = 8
+    MERCOSUR_BASE_URL = "https://cm.mercosur.com.ve"
+    QUOTES_FILE = QUOTES_LATEST_FILE = None
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
@@ -41,10 +56,12 @@ socket.getaddrinfo = patched_getaddrinfo
 
 class MercosurClient:
     def __init__(self):
-        self.base_url = "https://cm.mercosur.com.ve"
+        self.base_url = MERCOSUR_BASE_URL
         self.url_quotes = f"{self.base_url}/portal/mercado/dashboard/cotizaciones"
         self.url_login = f"{self.base_url}/portal/login"
         self.url_balances = f"{self.base_url}/portal/saldos"
+        self.timeout = HTTP_TIMEOUT
+        self.exclude_symbols = set(EXCLUDE_SYMBOLS)
         
         self.email = os.getenv("MERCOSUR_EMAIL") or os.getenv("MERCOSUR_USER", "")
         self.password = os.getenv("MERCOSUR_PASSWORD", "")
@@ -75,7 +92,7 @@ class MercosurClient:
                 "username": self.email,
                 "password": self.password
             }
-            res = requests.post(self.url_login, json=payload, headers=self.headers, timeout=8)
+            res = requests.post(self.url_login, json=payload, headers=self.headers, timeout=self.timeout)
             
             if res.status_code == 200:
                 data = res.json()
@@ -109,9 +126,36 @@ class MercosurClient:
 
         return res
 
+    @staticmethod
+    def _to_float(value, default=0.0):
+        """Convierte valores de la API a float tolerando None, 'N/A' y formato '1.234,56'."""
+        if isinstance(value, bool) or value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).strip().replace(" ", "").replace("\u00a0", "")
+        if not text:
+            return default
+        if "," in text and "." in text:
+            text = text.replace(".", "").replace(",", ".")
+        elif text.count(",") == 1 and len(text.split(",")[-1]) <= 2:
+            text = text.replace(",", ".")
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _pick(record, *keys):
+        """Primer valor no nulo entre varias claves posibles del registro."""
+        for key in keys:
+            if isinstance(record, dict) and record.get(key) is not None:
+                return record[key]
+        return None
+
     def get_balances(self):
         try:
-            res = self._request_with_auth_retry("GET", self.url_balances, timeout=8)
+            res = self._request_with_auth_retry("GET", self.url_balances, timeout=self.timeout)
             
             if res.status_code in (200, 304):
                 response_json = res.json()
@@ -125,64 +169,103 @@ class MercosurClient:
 
                 for acc in accounts:
                     if isinstance(acc, dict):
-                        disponible += float(acc.get("disponible") or acc.get("saldo_disponible") or 0.0)
-                        actual += float(acc.get("total") or acc.get("saldo_actual") or acc.get("saldo") or 0.0)
-                        bloqueado += float(acc.get("bloqueado") or acc.get("bloqueos") or 0.0)
+                        disponible += self._to_float(self._pick(acc, "disponible", "saldo_disponible", "available_balance"))
+                        actual += self._to_float(self._pick(acc, "total", "saldo_actual", "saldo", "current_balance", "total_balance"))
+                        bloqueado += self._to_float(self._pick(acc, "bloqueado", "bloqueos", "blocked_balance", "blocked_funds"))
 
                 return {
                     "disponible": disponible,
                     "saldo_disponible": disponible,
                     "ves_available": disponible,
+                    "available_balance": disponible,
                     "actual": actual,
+                    "saldo_actual": actual,
                     "total": actual,
+                    "total_balance": actual,
                     "bloqueado": bloqueado,
+                    "blocked_balance": bloqueado,
                     "raw_data": accounts
                 }
 
-            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0, "ves_available": 0.0}
+            return dict(self._empty_balances())
         except Exception:
-            return {"disponible": 0.0, "total": 0.0, "bloqueado": 0.0, "ves_available": 0.0}
+            return dict(self._empty_balances())
+
+    @staticmethod
+    def _empty_balances():
+        """Estructura de saldos en cero con todos los alias que usa la UI/IA."""
+        return {
+            "disponible": 0.0, "saldo_disponible": 0.0, "ves_available": 0.0,
+            "available_balance": 0.0, "actual": 0.0, "saldo_actual": 0.0,
+            "total": 0.0, "total_balance": 0.0, "bloqueado": 0.0,
+            "blocked_balance": 0.0, "raw_data": [],
+        }
+
+    def get_available_balance(self):
+        """Atajo: saldo disponible en VES (0.0 si no se puede consultar)."""
+        return self._to_float(self.get_balances().get("disponible"))
 
     def fetch_quotes(self):
         try:
-            response = requests.get(self.url_quotes, headers=self.headers, timeout=8)
+            response = requests.get(self.url_quotes, headers=self.headers, timeout=self.timeout)
             if response.status_code not in (200, 304):
                 return []
 
             data = response.json()
             items = data.get("data", data) if isinstance(data, dict) else data
+            if not isinstance(items, list):
+                return []
 
             def parse_item(item):
-                symbol = item.get("cod_simb") or item.get("simbolo") or item.get("symbol") or "N/A"
-                name = item.get("descripcion") or item.get("desc_simb") or "Sin Nombre"
-                price = float(item.get("precio_ultimo") or 0.0)
-                var_pct = float(item.get("variacion_rel") or item.get("variacion") or 0.0)
-                cash_div = float(item.get("monto_efectivo_acumulado") or item.get("monto_efectivo") or 0.0)
+                if not isinstance(item, dict):
+                    return None
+                symbol = str(self._pick(item, "cod_simb", "simbolo", "symbol") or "").strip().upper()
+                if not symbol or symbol in self.exclude_symbols:
+                    return None
+                name = self._pick(item, "descripcion", "desc_simb", "description") or "Sin Nombre"
+                price = self._to_float(self._pick(item, "precio_ultimo", "last_price"))
+                var_pct = self._to_float(self._pick(item, "variacion_rel", "var_pct", "variacion"))
+                traded_cash = self._to_float(
+                    self._pick(item, "monto_efectivo_acumulado", "monto_efectivo", "cash_amount")
+                )
                 dividend_type = item.get("tipo_dividendo") or "N/A"
 
                 return {
                     "symbol": symbol,
                     "description": name,
+                    # Nombres de la API + alias usados por la IA y la interfaz
                     "last_price": price,
+                    "precio_ultimo": price,
                     "var_pct": var_pct,
-                    "cash_amount": cash_div,
-                    "dividends": dividend_type
+                    "relative_variation_pct": var_pct,
+                    "cash_amount": traded_cash,
+                    "monto_efectivo": traded_cash,
+                    "dividends": dividend_type,
+                    "tipo_dividendo": dividend_type,
                 }
 
-            # Procesamiento concurrente de los 41+ instrumentos para máxima velocidad
+            # Procesamiento concurrente de los instrumentos para máxima velocidad
             with ThreadPoolExecutor(max_workers=8) as executor:
-                quotes = list(executor.map(parse_item, items))
+                parsed = executor.map(parse_item, items)
+            quotes = [quote for quote in parsed if quote]
 
-            try:
-                with open("quotes_latest.json", "w", encoding="utf-8") as f:
-                    json.dump(quotes, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-
+            self._save_quotes_backup(quotes)
             return quotes
 
         except Exception:
             return []
+
+    @staticmethod
+    def _save_quotes_backup(quotes):
+        """Guarda copia local de las cotizaciones (data/cotizaciones.json + quotes_latest.json)."""
+        for path in (QUOTES_FILE, QUOTES_LATEST_FILE):
+            if not path:
+                continue
+            try:
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(quotes, handle, ensure_ascii=False, indent=2)
+            except Exception:
+                continue
 
     def get_companies_summary(self):
         return self.fetch_quotes()
@@ -190,7 +273,7 @@ class MercosurClient:
     def fetch_orders(self, pagina=1, limite=20):
         try:
             url_orders = f"{self.base_url}/portal/ordenes?pagina={pagina}&limite={limite}"
-            response = self._request_with_auth_retry("GET", url_orders, timeout=8)
+            response = self._request_with_auth_retry("GET", url_orders, timeout=self.timeout)
             
             if response.status_code not in (200, 304):
                 return []

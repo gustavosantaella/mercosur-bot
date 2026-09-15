@@ -5,3 +5,4 @@ feedparser>=6.0.0
 rich>=13.0.0
 selenium>=4.10.0
 webdriver-manager>=4.0.0
+dnspython>=2.4.0
