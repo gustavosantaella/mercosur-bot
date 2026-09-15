@@ -11,6 +11,10 @@ build/
 
 # Data files
 data/session_token.json
+data
+
+# Cotizaciones generadas localmente (antes se versionaban por error)
+quotes_latest.json
 
 # IDE
 .vscode/

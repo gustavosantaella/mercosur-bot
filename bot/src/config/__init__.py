@@ -161,3 +161,57 @@ def _build_news_feeds():
 
 NEWS_FEEDS = _build_news_feeds()
 
+
+# ─────────────────────────────────────────────────────────────────
+# Sesión persistente (evita hacer login en cada ejecución)
+# ─────────────────────────────────────────────────────────────────
+# Horas de vida de la sesión guardada cuando el JWT no trae campo 'exp'
+SESSION_TTL_HOURS = _as_float(os.getenv("SESSION_TTL_HOURS"), 12.0)
+# Si la API falla, usar la última copia local de cotizaciones
+USE_QUOTES_CACHE = _as_bool(os.getenv("USE_QUOTES_CACHE"), True)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Logging (traza en archivo con rotación)
+# ─────────────────────────────────────────────────────────────────
+LOG_FILE = _resolve_path(os.getenv("LOG_FILE"), DATA_DIR / "bot.log")
+LOG_MAX_BYTES = _as_int(os.getenv("LOG_MAX_BYTES"), 1_000_000)
+LOG_BACKUPS = _as_int(os.getenv("LOG_BACKUPS"), 3)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Histórico de mercado (SQLite, sin dependencias externas)
+# ─────────────────────────────────────────────────────────────────
+HISTORY_DB = _resolve_path(os.getenv("HISTORY_DB"), DATA_DIR / "market_history.db")
+HISTORY_ENABLED = _as_bool(os.getenv("HISTORY_ENABLED"), True)
+HISTORY_WINDOW = _as_int(os.getenv("HISTORY_WINDOW"), 30)  # ruedas a considerar
+
+
+# ─────────────────────────────────────────────────────────────────
+# Cartera / posiciones (multi-endpoint, tolerante a cambios de la API)
+# ─────────────────────────────────────────────────────────────────
+MERCOSUR_PORTAFOLIO_URL = os.getenv("MERCOSUR_PORTAFOLIO_URL", f"{MERCOSUR_BASE_URL}/portal/portafolio")
+_pf_candidates = [
+    MERCOSUR_PORTAFOLIO_URL,
+    f"{MERCOSUR_BASE_URL}/portal/posiciones",
+    f"{MERCOSUR_BASE_URL}/portal/cartera",
+    f"{MERCOSUR_BASE_URL}/portal/titulos",
+]
+MERCOSUR_PORTAFOLIO_URLS = []
+for _url in _pf_candidates:
+    if _url and _url not in MERCOSUR_PORTAFOLIO_URLS:
+        MERCOSUR_PORTAFOLIO_URLS.append(_url)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Pesos del motor de puntaje (ajustables con el backtesting)
+# ─────────────────────────────────────────────────────────────────
+SCORE_WEIGHT_LIQUIDITY = _as_float(os.getenv("SCORE_WEIGHT_LIQUIDITY"), 0.50)
+SCORE_WEIGHT_VARIATION = _as_float(os.getenv("SCORE_WEIGHT_VARIATION"), 0.30)
+SCORE_WEIGHT_TREND = _as_float(os.getenv("SCORE_WEIGHT_TREND"), 0.50)
+SCORE_WEIGHT_DIVIDEND = _as_float(os.getenv("SCORE_WEIGHT_DIVIDEND"), 20.0)
+SCORE_WEIGHT_NEWS = _as_float(os.getenv("SCORE_WEIGHT_NEWS"), 2.0)
+BACKTEST_TOP_N = _as_int(os.getenv("BACKTEST_TOP_N"), 3)
+BACKTEST_HORIZON = _as_int(os.getenv("BACKTEST_HORIZON"), 3)
+
+

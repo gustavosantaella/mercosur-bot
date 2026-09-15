@@ -28,6 +28,12 @@ for stream_name in ("stdout", "stderr"):
 console = Console()
 
 
+def set_no_color():
+    """Desactiva el color de la consola (modo --no-color / logs)."""
+    global console
+    console = Console(no_color=True, highlight=False)
+
+
 def _num(value, default=0.0):
     """Convierte cualquier valor (None/str) a float sin romper la interfaz."""
     try:
@@ -55,15 +61,86 @@ def print_header():
     ))
 
 
-def print_auth_success(token=None, cliente_data=None, reused_cache=False):
-    status = "caché reutilizada" if reused_cache else "nuevo token obtenido"
-    token_txt = f" [dim]{(str(token)[:18] + '...') if token else ''}[/dim]"
-    console.print(f"[bold green]✔ Autenticación exitosa[/bold green] ({status}){token_txt}")
+def print_auth_success(reused_cache=False, cliente_data=None):
+    """Informa el estado de la sesión SIN exponer el token (seguridad)."""
+    status = "sesión guardada reutilizada" if reused_cache else "nueva sesión iniciada"
+    icon = "🔐" if reused_cache else "🔑"
+    console.print(f"[bold green]✔ Autenticación exitosa[/bold green] — {icon} {status}")
     data = cliente_data if isinstance(cliente_data, dict) else {}
     name = str(data.get("nombre") or data.get("username") or "").strip()
     if name:
         console.print(f"👤 Cliente: [cyan]{name}[/cyan] | RIF: {data.get('rif', 'N/D')} "
                       f"| KYC: {data.get('estado_kyc', 'N/D')}")
+
+
+def print_quotes_source(source: str, age_hours: float = 0.0):
+    """Avisa si las cotizaciones son en vivo o provienen de la copia local (offline)."""
+    if source == "live":
+        console.print("[dim]🌐 Cotizaciones en vivo desde Mercosur.[/dim]")
+    elif source == "cache":
+        console.print(
+            f"[bold yellow]⚠️ Sin conexión a Mercosur: usando cotizaciones guardadas hace "
+            f"{age_hours:,.1f} h (pueden estar desactualizadas).[/bold yellow]"
+        )
+    else:
+        console.print("[bold red]❌ No hay cotizaciones disponibles (ni en vivo ni en caché).[/bold red]")
+
+
+def display_portfolio(positions, source: Optional[str] = None):
+    """Tabla con la cartera real: cantidad, costo, precio de mercado y P&L."""
+    if not positions:
+        console.print("[yellow]🧾 No se pudieron obtener posiciones de la cartera "
+                      "(cartera vacía o endpoint no disponible).[/yellow]")
+        return
+
+    table = Table(title="🧾 Mi Cartera (posiciones y P&L)")
+    table.add_column("Símbolo", style="cyan", no_wrap=True)
+    table.add_column("Empresa", style="magenta")
+    table.add_column("Cantidad", justify="right")
+    table.add_column("Costo (VES)", justify="right")
+    table.add_column("Mercado (VES)", justify="right", style="green")
+    table.add_column("Valor (VES)", justify="right", style="bold")
+    table.add_column("P&L (VES)", justify="right")
+    table.add_column("P&L %", justify="right")
+
+    total_cost = total_value = total_pnl = 0.0
+    for item in positions:
+        pnl_pct = _num(item.get("pnl_pct"))
+        color = "red" if pnl_pct < 0 else ("green" if pnl_pct > 0 else "white")
+        total_cost += _num(item.get("cost"))
+        total_value += _num(item.get("market_value"))
+        total_pnl += _num(item.get("pnl"))
+        table.add_row(
+            str(item.get("symbol", "N/D")),
+            str(item.get("description", ""))[:32],
+            f"{_num(item.get('quantity')):,.2f}",
+            f"{_num(item.get('avg_price')):,.2f}",
+            f"{_num(item.get('market_price')):,.2f}",
+            f"{_num(item.get('market_value')):,.2f}",
+            f"[{color}]{_num(item.get('pnl')):+,.2f}[/{color}]",
+            f"[{color}]{pnl_pct:+.2f}%[/{color}]",
+        )
+    console.print(table)
+    result_color = "red" if total_pnl < 0 else "green"
+    console.print(
+        f"📊 Invertido: [bold]{total_cost:,.2f} VES[/bold] | "
+        f"Valor actual: [bold]{total_value:,.2f} VES[/bold] | "
+        f"Resultado: [{result_color}]{total_pnl:+,.2f} VES[/{result_color}]"
+    )
+    if source:
+        console.print(f"[dim]Fuente de las posiciones: {source}[/dim]")
+
+
+def display_history_summary(summary: Dict[str, Any]):
+    """Muestra cuánto histórico hay acumulado (para tendencia y backtesting)."""
+    if not summary or not summary.get("ruedas"):
+        console.print("[dim]📚 Sin histórico guardado todavía: se creará al consultar cotizaciones.[/dim]")
+        return
+    console.print(
+        f"[dim]📚 Histórico: {summary.get('ruedas')} ruedas "
+        f"({summary.get('from')} → {summary.get('to')}) · {summary.get('symbols')} símbolos[/dim]"
+    )
+
 
 
 def print_ai_engine_info(engine_name: str, engine_detail: str = ""):
@@ -291,7 +368,7 @@ def display_best_investment(result: Dict[str, Any]):
 def show_main_menu():
     console.clear()
     print_header()
-    console.print("  [bold green]1.[/bold green] 💰 Ver Saldos y Estado de Cuenta")
+    console.print("  [bold green]1.[/bold green] 💰 Ver Saldos, Cartera y Estado de Cuenta")
     console.print("  [bold green]2.[/bold green] 🚀 Inversión Automática / Análisis Completo IA")
     console.print("  [bold green]3.[/bold green] 📈 Instrumentos (Listar Empresas Cotizando)")
     console.print("  [bold green]4.[/bold green] 📋 Órdenes (Ver mis órdenes registradas)")

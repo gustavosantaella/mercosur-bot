@@ -14,10 +14,23 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from src.config import EXCLUDE_SYMBOLS, HTTP_TIMEOUT, OLLAMA_HOST, OLLAMA_MODEL, USE_AI
+    from src.config import (
+        EXCLUDE_SYMBOLS,
+        HTTP_TIMEOUT,
+        OLLAMA_HOST,
+        OLLAMA_MODEL,
+        SCORE_WEIGHT_DIVIDEND,
+        SCORE_WEIGHT_LIQUIDITY,
+        SCORE_WEIGHT_NEWS,
+        SCORE_WEIGHT_TREND,
+        SCORE_WEIGHT_VARIATION,
+        USE_AI,
+    )
 except Exception:  # pragma: no cover - fallback defensivo
     EXCLUDE_SYMBOLS, HTTP_TIMEOUT = [], 10
     OLLAMA_HOST, OLLAMA_MODEL, USE_AI = "http://localhost:11434", "llama3.2", True
+    SCORE_WEIGHT_LIQUIDITY, SCORE_WEIGHT_VARIATION = 0.50, 0.30
+    SCORE_WEIGHT_TREND, SCORE_WEIGHT_DIVIDEND, SCORE_WEIGHT_NEWS = 0.50, 20.0, 2.0
 
 try:
     from .dividends import get_dividend_info
@@ -73,6 +86,34 @@ def _safe_str(value: Any, default: str = "") -> str:
 
 class InvestmentAIAdvisor:
     """Consejero de inversión: ranking, mejor empresa y planes de compra."""
+
+    # Pesos del motor (configurables por .env y ajustables con el backtesting)
+    DEFAULT_WEIGHTS = {
+        "liquidity": SCORE_WEIGHT_LIQUIDITY,
+        "variation": SCORE_WEIGHT_VARIATION,
+        "trend": SCORE_WEIGHT_TREND,
+        "dividend": SCORE_WEIGHT_DIVIDEND,
+        "news": SCORE_WEIGHT_NEWS,
+    }
+
+    @classmethod
+    def score_value(cls, liquidity_share, var_pct, pays_dividends=False, news_bonus=0.0,
+                    trend_pct=0.0, weights=None):
+        """Fórmula ÚNICA de puntaje (compartida con el backtesting).
+
+        score = liquidez*peso + variación*peso + tendencia*peso + dividendos + noticias
+        """
+        effective = dict(cls.DEFAULT_WEIGHTS)
+        if weights:
+            effective.update({key: value for key, value in weights.items() if value is not None})
+
+        score = (_safe_float(liquidity_share) * effective["liquidity"]) + \
+                (_safe_float(var_pct) * effective["variation"])
+        if pays_dividends:
+            score += effective["dividend"]
+        score += _safe_float(trend_pct) * effective["trend"]
+        score += _safe_float(news_bonus) * effective["news"]
+        return score
 
     def __init__(self, ollama_client=None, use_ollama: Optional[bool] = None):
         self.ollama_client = ollama_client
@@ -180,8 +221,8 @@ class InvestmentAIAdvisor:
 
         return sum(1 for text in news_texts for key in keys if key and key in text)
 
-    def _evaluate_company(self, company, total_market_cash, sentiment, news_texts):
-        """Puntúa un instrumento combinando liquidez, variación, dividendos y noticias."""
+    def _evaluate_company(self, company, total_market_cash, sentiment, news_texts, stats=None):
+        """Puntúa un instrumento combinando liquidez, variación, tendencia, dividendos y noticias."""
         symbol = _safe_str(company.get("symbol") or company.get("simbolo"), "N/A").upper()
         name = _safe_str(
             company.get("description") or company.get("descripcion")
@@ -195,14 +236,20 @@ class InvestmentAIAdvisor:
         traded_cash = _safe_float(company.get("cash_amount") or company.get("monto_efectivo"))
         dividends = self._dividend_info(company, symbol)
 
+        stats = stats or {}
+        trend_pct = _safe_float(stats.get("trend_pct"))
+        samples = int(_safe_float(stats.get("samples")))
         liquidity_share = (traded_cash / total_market_cash * 100.0) if total_market_cash else 0.0
         news_hits = self._company_news_hits(symbol, name, news_texts)
         direction = 1.0 if sentiment["score"] >= 0 else -1.0
 
-        score = (liquidity_share * 0.50) + (var_pct * 0.30)
-        if dividends["pays"]:
-            score += 20.0
-        score += news_hits * 2.0 * direction
+        score = self.score_value(
+            liquidity_share=liquidity_share,
+            var_pct=var_pct,
+            pays_dividends=dividends["pays"],
+            news_bonus=news_hits * direction,
+            trend_pct=trend_pct,
+        )
 
         if score >= 25.0 and var_pct > 0:
             action, strategy = "🟢 COMPRAR", "Inversión fuerte en activo líquido"
@@ -223,6 +270,14 @@ class InvestmentAIAdvisor:
             action, strategy = "🟡 MANTENER", "Posición estable"
             reason = "Comportamiento dentro del rango esperado, sin señales fuertes."
 
+        # Ajuste por tendencia histórica (solo si hay ruedas suficientes)
+        if samples >= 3 and trend_pct > 8.0 and "MANTENER" in action:
+            action, strategy = "🟢 COMPRAR (tendencia)", "Momentum sostenido"
+            reason = f"Tendencia alcista sostenida de {trend_pct:+.2f}% en {samples} ruedas."
+
+        if samples >= 2:
+            reason = f"{reason} Tendencia de {trend_pct:+.2f}% en {samples} ruedas."
+
         return {
             "symbol": symbol,
             "description": name,
@@ -232,17 +287,32 @@ class InvestmentAIAdvisor:
             "liquidity_share": liquidity_share,
             "dividends": dividends,
             "news_hits": news_hits,
+            "trend_pct": round(trend_pct, 2),
+            "volatility": round(_safe_float(stats.get("volatility")), 2),
+            "momentum_pct": round(_safe_float(stats.get("momentum_pct")), 2),
+            "history_samples": samples,
             "score": round(score, 2),
             "action": action,
             "strategy": strategy,
             "reason": reason,
         }
 
-    def rank_companies(self, companies, news=None, limit=None):
-        """Ordena los instrumentos por atractivo (mayor puntaje primero)."""
+    def rank_companies(self, companies, news=None, limit=None, history=None):
+        """Ordena los instrumentos por atractivo (mayor puntaje primero).
+
+        Si se pasa ``history`` (MarketHistory) se incorpora tendencia/volatilidad
+        de las ruedas anteriores al puntaje.
+        """
         companies = [c for c in (companies or []) if isinstance(c, dict)]
         sentiment = self._news_sentiment(news)
         news_texts = self._news_text(news)
+
+        stats_map = {}
+        if history is not None:
+            try:
+                stats_map = history.get_all_stats()
+            except Exception:
+                stats_map = {}
 
         total_market_cash = sum(
             _safe_float(c.get("cash_amount") or c.get("monto_efectivo")) for c in companies
@@ -260,7 +330,9 @@ class InvestmentAIAdvisor:
                 excluded.append(symbol)
                 continue
             seen.add(symbol)
-            evaluated.append(self._evaluate_company(company, total_market_cash, sentiment, news_texts))
+            evaluated.append(self._evaluate_company(
+                company, total_market_cash, sentiment, news_texts, stats=stats_map.get(symbol)
+            ))
 
         evaluated.sort(key=lambda item: item["score"], reverse=True)
         return {
@@ -270,6 +342,7 @@ class InvestmentAIAdvisor:
             "sentiment": sentiment,
             "total_market_cash": total_market_cash,
             "analyzed": len(evaluated),
+            "history_used": bool(stats_map),
         }
 
     @staticmethod
@@ -361,7 +434,61 @@ class InvestmentAIAdvisor:
         lines.append("")
         return lines
 
+    def _history_block(self, ranking, top=6):
+        """Sección con tendencia/momentum/volatilidad de las ruedas anteriores."""
+        lines = ["## 📈 Tendencia histórica (ruedas anteriores)", ""]
+        with_history = [item for item in ranking if int(item.get("history_samples", 0)) >= 2][:top]
+        if not with_history:
+            lines.append("- Aún no hay histórico suficiente: el puntaje usa solo la rueda actual. "
+                         "Ejecuta el bot a diario para acumular ruedas y activar tendencia/volatilidad.")
+            lines.append("")
+            return lines
+
+        for item in with_history:
+            lines.append(
+                f"- **`{item['symbol']}`**: tendencia `{item['trend_pct']:+.2f}%` en "
+                f"{item['history_samples']} ruedas | momentum `{item['momentum_pct']:+.2f}%` | "
+                f"volatilidad `{item['volatility']:.2f}`"
+            )
+        lines.append("")
+        return lines
+
+    def _portfolio_block(self, positions, ranking):
+        """Sección con la cartera real del usuario (posiciones y P&L)."""
+        lines = ["## 🧾 Tu cartera real (posiciones y P&L)", ""]
+        if not positions:
+            lines.append("- Sin posiciones disponibles (cartera vacía o endpoint no accesible). "
+                         "Las recomendaciones se basan en el ranking de mercado.")
+            lines.append("")
+            return lines
+
+        ranking_map = {item["symbol"]: item for item in ranking}
+        total_value = sum(_safe_float(p.get("market_value")) for p in positions)
+        total_cost = sum(_safe_float(p.get("cost")) for p in positions)
+        total_pnl = sum(_safe_float(p.get("pnl")) for p in positions)
+        lines.append(
+            f"- Posiciones: `{len(positions)}` | Invertido: `{total_cost:,.2f} VES` | "
+            f"Valor de mercado: `{total_value:,.2f} VES` | "
+            f"Resultado: `{total_pnl:+,.2f} VES`"
+        )
+        lines.append("")
+        for position in positions[:12]:
+            symbol = _safe_str(position.get("symbol"), "N/D")
+            item = ranking_map.get(symbol)
+            verdict = f" · IA: {item['action']}" if item else " · IA: sin cotización"
+            lines.append(
+                f"- **`{symbol}`**: {_safe_float(position.get('quantity')):,.2f} acc. | "
+                f"costo prom. `{_safe_float(position.get('avg_price')):,.2f}` | "
+                f"mercado `{_safe_float(position.get('market_price')):,.2f}` | "
+                f"valor `{_safe_float(position.get('market_value')):,.2f} VES` | "
+                f"P&L `{_safe_float(position.get('pnl')):+,.2f} VES` "
+                f"(`{_safe_float(position.get('pnl_pct')):+.2f}%`){verdict}"
+            )
+        lines.append("")
+        return lines
+
     def _build_best_report(self, result, balance, has_balance):
+
         """Informe enfocado: ¿en qué empresa es mejor invertir? (Opción 5)."""
         engine_name, engine_detail = self.get_engine_info()
         ranking = result["ranking"]
@@ -394,6 +521,10 @@ class InvestmentAIAdvisor:
         lines.append(f"- **Monto negociado:** `{best['traded_cash']:,.2f} VES` "
                      f"({best['liquidity_share']:.2f}% del mercado)")
         lines.append(f"- **Dividendos:** {payout} ({_safe_str(best['dividends'].get('frequency'), 'N/D')})")
+        if int(best.get("history_samples", 0)) >= 2:
+            lines.append(f"- **Tendencia histórica:** `{best['trend_pct']:+.2f}%` en "
+                         f"{best['history_samples']} ruedas | momentum `{best['momentum_pct']:+.2f}%` | "
+                         f"volatilidad `{best['volatility']:.2f}`")
         lines.append(f"- **¿Por qué la recomendamos?** {best['reason']}")
         lines.extend(self._capacity_lines(best, balance, has_balance))
         lines.append("")
@@ -410,6 +541,8 @@ class InvestmentAIAdvisor:
             lines.append("")
 
         lines.extend(self._news_block(sentiment, result.get("news")))
+        lines.extend(self._history_block(ranking))
+        lines.extend(self._portfolio_block(result.get("positions") or [], ranking))
 
         lines.append("## ✅ Plan de acción sugerido")
         lines.append("")
@@ -434,6 +567,10 @@ class InvestmentAIAdvisor:
         lines.append(f"- **Monto negociado:** `{item['traded_cash']:,.2f} VES` "
                      f"({item['liquidity_share']:.2f}% del mercado)")
         lines.append(f"- **Puntaje IA:** `{item['score']:,.2f} pts`")
+        if int(item.get("history_samples", 0)) >= 2:
+            lines.append(f"- **Tendencia:** `{item['trend_pct']:+.2f}%` en "
+                         f"{item['history_samples']} ruedas | momentum `{item['momentum_pct']:+.2f}%` | "
+                         f"volatilidad `{item['volatility']:.2f}`")
         lines.append(f"- **Dividendos:** {_safe_str(item['dividends'].get('pays_dividends'), 'N/D')} "
                      f"({_safe_str(item['dividends'].get('frequency'), 'N/D')}) — "
                      f"{_safe_str(item['dividends'].get('type'), 'N/D')}")
@@ -519,6 +656,8 @@ class InvestmentAIAdvisor:
         lines.append("---")
         lines.append("")
         lines.extend(self._news_block(sentiment, result.get("news")))
+        lines.extend(self._history_block(ranked))
+        lines.extend(self._portfolio_block(result.get("positions") or [], ranked))
 
         lines.append("---")
         lines.append("")
@@ -589,10 +728,11 @@ INSTRUCCIONES OBLIGATORIAS:
             return None
         return None
 
-    def recommend_best_investment(self, companies, news=None, balance=None, top_n=5):
+    def recommend_best_investment(self, companies, news=None, balance=None, top_n=5,
+                                  history=None, positions=None):
         """Responde "¿en qué empresa es mejor invertir?" — funciona CON o SIN saldo."""
         news = list(news or [])
-        data = self.rank_companies(companies, news)
+        data = self.rank_companies(companies, news, history=history)
         ranking = self._attach_purchase_plan(data["ranking"], balance)
 
         balance_value = _safe_float(balance, 0.0)
@@ -604,6 +744,8 @@ INSTRUCCIONES OBLIGATORIAS:
             "sentiment": data["sentiment"],
             "total_market_cash": data["total_market_cash"],
             "analyzed": data["analyzed"],
+            "history_used": data.get("history_used", False),
+            "positions": list(positions or []),
             "news": news,
         }
         result["report"] = self._build_best_report(result, balance_value, has_balance)
@@ -614,7 +756,7 @@ INSTRUCCIONES OBLIGATORIAS:
         return result
 
     def analyze_investments(self, companies, news=None, bnc_balance=None, mercosur_balance=None,
-                            top_n=5, use_ollama=None):
+                            top_n=5, use_ollama=None, history=None, positions=None):
         """Informe completo de portafolio (compras, rotación, liquidez y reglas)."""
         news = list(news or [])
         llm_enabled = self.use_ollama if use_ollama is None else bool(use_ollama)
@@ -624,7 +766,7 @@ INSTRUCCIONES OBLIGATORIAS:
             if llm_report:
                 return llm_report
 
-        data = self.rank_companies(companies, news)
+        data = self.rank_companies(companies, news, history=history)
         ranking = self._attach_purchase_plan(data["ranking"], mercosur_balance)
         balance_value = _safe_float(mercosur_balance, 0.0)
         has_balance = mercosur_balance is not None and balance_value > 0
@@ -635,6 +777,8 @@ INSTRUCCIONES OBLIGATORIAS:
             "sentiment": data["sentiment"],
             "total_market_cash": data["total_market_cash"],
             "analyzed": data["analyzed"],
+            "history_used": data.get("history_used", False),
+            "positions": list(positions or []),
             "news": news,
         }
         return self._build_full_report(result, balance_value, has_balance, bnc_balance)
